@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { MenuData, MenuCategory, MenuItem } from "@/lib/types"
 import { initialMenuData } from "@/lib/initial-menu-data"
-import { PlusIcon, MinusIcon, SaveIcon } from 'lucide-react'
+import { PlusIcon, MinusIcon, SaveIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react' // Import Arrow icons
 import { useToast } from "@/hooks/use-toast"
-import { Textarea } from "@/components/ui/textarea" // Import Textarea for descriptions
+import { Textarea } from "@/components/ui/textarea"
 
 export function MenuEditor() {
   const [menu, setMenu] = useState<MenuData>(initialMenuData)
@@ -45,7 +45,7 @@ export function MenuEditor() {
 
   const handleAddItem = (catIndex: number) => {
     const newMenu = [...menu]
-    newMenu[catIndex].items.push({ name: "", price: null, description: "", imageUrl: "" }) // Initialize new fields
+    newMenu[catIndex].items.push({ name: "", price: null, description: "", imageUrl: "" })
     setMenu(newMenu)
   }
 
@@ -56,7 +56,7 @@ export function MenuEditor() {
   }
 
   const handleAddCategory = () => {
-    setMenu([...menu, { category: "", items: [{ name: "", price: null, description: "", imageUrl: "" }] }]) // Initialize new fields
+    setMenu([...menu, { category: "", items: [{ name: "", price: null, description: "", imageUrl: "" }] }])
   }
 
   const handleRemoveCategory = (catIndex: number) => {
@@ -64,6 +64,16 @@ export function MenuEditor() {
     newMenu.splice(catIndex, 1)
     setMenu(newMenu)
   }
+
+  const handleMoveCategory = (index: number, direction: 'up' | 'down') => {
+    const newMenu = [...menu];
+    if (direction === 'up' && index > 0) {
+      [newMenu[index - 1], newMenu[index]] = [newMenu[index], newMenu[index - 1]];
+    } else if (direction === 'down' && index < newMenu.length - 1) {
+      [newMenu[index + 1], newMenu[index]] = [newMenu[index], newMenu[index + 1]];
+    }
+    setMenu(newMenu);
+  };
 
   const handleSave = () => {
     localStorage.setItem("restaurant_menu", JSON.stringify(menu))
@@ -83,7 +93,7 @@ export function MenuEditor() {
       {menu.map((categoryData, catIndex) => (
         <Card key={catIndex} className="mb-8">
           <CardHeader className="flex flex-row items-center justify-between">
-            <div className="grid gap-1">
+            <div className="grid gap-1 flex-grow"> {/* Added flex-grow */}
               <CardTitle>
                 <Input
                   value={categoryData.category}
@@ -94,10 +104,29 @@ export function MenuEditor() {
               </CardTitle>
               <CardDescription>Edit items in this category.</CardDescription>
             </div>
-            <Button variant="destructive" size="sm" onClick={() => handleRemoveCategory(catIndex)}>
-              <MinusIcon className="h-4 w-4" />
-              <span className="sr-only">Remove Category</span>
-            </Button>
+            <div className="flex items-center gap-2 ml-4"> {/* Added ml-4 for spacing */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleMoveCategory(catIndex, 'up')}
+                disabled={catIndex === 0}
+                aria-label="Move category up"
+              >
+                <ArrowUpIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleMoveCategory(catIndex, 'down')}
+                disabled={catIndex === menu.length - 1}
+                aria-label="Move category down"
+              >
+                <ArrowDownIcon className="h-4 w-4" />
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => handleRemoveCategory(catIndex)} aria-label="Remove category">
+                <MinusIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-4">
             {categoryData.items.map((item, itemIndex) => (
@@ -122,9 +151,8 @@ export function MenuEditor() {
                       placeholder="e.g., 600"
                     />
                   </div>
-                  <Button variant="outline" size="icon" onClick={() => handleRemoveItem(catIndex, itemIndex)}>
+                  <Button variant="outline" size="icon" onClick={() => handleRemoveItem(catIndex, itemIndex)} aria-label="Remove item">
                     <MinusIcon className="h-4 w-4" />
-                    <span className="sr-only">Remove Item</span>
                   </Button>
                 </div>
                 <div className="grid gap-2">
