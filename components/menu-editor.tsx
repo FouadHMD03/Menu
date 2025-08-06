@@ -103,9 +103,9 @@ export function MenuEditor() {
       newMenu[catIndex].items.push({ ...newItem, id: data.id })
       setMenu(newMenu)
       toast({ title: "Item Added", description: "New item added to database." })
-    } catch (err) {
+    } catch (err: any) { // Catch error to log details
       console.error("Error adding item:", err)
-      toast({ title: "Error", description: "Failed to add item.", variant: "destructive" })
+      toast({ title: "Error adding item", description: err.message || "An unknown error occurred.", variant: "destructive" })
     }
   }
 
@@ -130,9 +130,9 @@ export function MenuEditor() {
       newMenu[catIndex].items.forEach((item, idx) => item.order_index = idx);
       setMenu(newMenu)
       toast({ title: "Item Removed", description: "Item removed from database." })
-    } catch (err) {
+    } catch (err: any) { // Catch error to log details
       console.error("Error removing item:", err)
-      toast({ title: "Error", description: "Failed to remove item.", variant: "destructive" })
+      toast({ title: "Error removing item", description: err.message || "An unknown error occurred.", variant: "destructive" })
     }
   }
 
@@ -149,9 +149,9 @@ export function MenuEditor() {
 
       setMenu([...menu, { ...newCategory, id: data.id }])
       toast({ title: "Category Added", description: "New category added to database." })
-    } catch (err) {
+    } catch (err: any) { // Catch error to log details
       console.error("Error adding category:", err)
-      toast({ title: "Error", description: "Failed to add category.", variant: "destructive" })
+      toast({ title: "Error adding category", description: err.message || "An unknown error occurred.", variant: "destructive" })
     }
   }
 
@@ -179,9 +179,9 @@ export function MenuEditor() {
       newMenu.forEach((cat, idx) => cat.order_index = idx);
       setMenu(newMenu)
       toast({ title: "Category Removed", description: "Category removed from database." })
-    } catch (err) {
+    } catch (err: any) { // Catch error to log details
       console.error("Error removing category:", err)
-      toast({ title: "Error", description: "Failed to remove category.", variant: "destructive" })
+      toast({ title: "Error removing category", description: err.message || "An unknown error occurred.", variant: "destructive" })
     }
   }
 
@@ -206,7 +206,6 @@ export function MenuEditor() {
       // Save categories
       for (const [index, category] of menu.entries()) {
         if (!category.id) {
-          // This case should ideally not happen if categories are added via handleAddCategory
           console.warn("Category missing ID, skipping save:", category);
           continue;
         }
@@ -223,7 +222,6 @@ export function MenuEditor() {
         // Save items for each category
         for (const [itemIndex, item] of category.items.entries()) {
           if (!item.id) {
-            // This case should ideally not happen if items are added via handleAddItem
             console.warn("Item missing ID, skipping save:", item);
             continue;
           }
@@ -246,11 +244,11 @@ export function MenuEditor() {
         title: "Menu Saved!",
         description: "Your menu changes have been saved to the database.",
       })
-    } catch (err) {
+    } catch (err: any) { // Catch error to log details
       console.error("Error saving menu:", err)
       toast({
-        title: "Error",
-        description: "Failed to save menu changes to database.",
+        title: "Error saving menu",
+        description: err.message || "An unknown error occurred.",
         variant: "destructive",
       })
     }
