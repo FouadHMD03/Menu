@@ -6,25 +6,57 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { MenuData, MenuCategory, MenuItem } from "@/lib/types"
-import { initialMenuData } from "@/lib/initial-menu-data"
-import { PlusIcon, MinusIcon, SaveIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react' // Import Arrow icons
+import { PlusIcon, MinusIcon, SaveIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
+import { createClient as createBrowserSupabaseClient } from "@/lib/supabase/client"
 
 export function MenuEditor() {
-  const [menu, setMenu] = useState<MenuData>(initialMenuData)
+  const [menu, setMenu] = useState<MenuData>([])
+  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+  const supabase = createBrowserSupabaseClient()
 
   useEffect(() => {
-    const storedMenu = localStorage.getItem("restaurant_menu")
-    if (storedMenu) {
+    const fetchMenu = async () => {
+      setLoading(true)
       try {
-        setMenu(JSON.parse(storedMenu))
-      } catch (e) {
-        console.error("Failed to parse menu from local storage", e)
-        setMenu(initialMenuData)
+        const { data, error } = await supabase
+          .from('menu_categories')
+          .select('id, name, order_index, menu_items(id, name, price, description, image_url, order_index)')
+          .order('order_index', { ascending: true })
+          .order('order_index', { foreignTable: 'menu_items', ascending: true });
+
+        if (error) throw error;
+
+        const formattedMenu: MenuData = data.map(category => ({
+          id: category.id,
+          category: category.name,
+          order_index: category.order_index,
+          items: category.menu_items.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            description: item.description || undefined,
+            imageUrl: item.image_url || undefined,
+            order_index: item.order_index,
+          })),
+        }));
+
+        setMenu(formattedMenu);
+      } catch (err) {
+        console.error("Error fetching menu for editor:", err)
+        toast({
+          title: "Error",
+          description: "Failed to load menu for editing.",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
       }
     }
+
+    fetchMenu()
   }, [])
 
   const handleCategoryChange = (index: number, newCategory: string) => {
@@ -43,44 +75,193 @@ export function MenuEditor() {
     setMenu(newMenu)
   }
 
-  const handleAddItem = (catIndex: number) => {
+  const handleAddItem = async (catIndex: number) => {
     const newMenu = [...menu]
-    newMenu[catIndex].items.push({ name: "", price: null, description: "", imageUrl: "" })
-    setMenu(newMenu)
-  }
-
-  const handleRemoveItem = (catIndex: number, itemIndex: number) => {
-    const newMenu = [...menu]
-    newMenu[catIndex].items.splice(itemIndex, 1)
-    setMenu(newMenu)
-  }
-
-  const handleAddCategory = () => {
-    setMenu([...menu, { category: "", items: [{ name: "", price: null, description: "", imageUrl: "" }] }])
-  }
-
-  const handleRemoveCategory = (catIndex: number) => {
-    const newMenu = [...menu]
-    newMenu.splice(catIndex, 1)
-    setMenu(newMenu)
-  }
-
-  const handleMoveCategory = (index: number, direction: 'up' | 'down') => {
-    const newMenu = [...menu];
-    if (direction === 'up' && index > 0) {
-      [newMenu[index - 1], newMenu[index]] = [newMenu[index], newMenu[index - 1]];
-    } else if (direction === 'down' && index < newMenu.length - 1) {
-      [newMenu[index + 1], newMenu[index]] = [newMenu[index], newMenu[index + 1]];
+    const categoryId = newMenu[catIndex].id
+    if (!categoryId) {
+      toast({ title: "Error", description: "Category not saved yet. Please save categories first.", variant: "destructive" });
+      return;
     }
-    setMenu(newMenu);
+    const newItem = { name: "", price: null, description: "", imageUrl: "", order_index: newMenu[catIndex].items.length }
+
+    try {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .insert({
+          category_id: categoryId,
+          name: newItem.name,
+          price: newItem.price,
+          description: newItem.description,
+          image_url: newItem.imageUrl,
+          order_index: newItem.order_index,
+        })
+        .select('id')
+        .single()
+
+      if (error) throw error
+
+      newMenu[catIndex].items.push({ ...newItem, id: data.id })
+      setMenu(newMenu)
+      toast({ title: "Item Added", description: "New item added to database." })
+    } catch (err) {
+      console.error("Error adding item:", err)
+      toast({ title: "Error", description: "Failed to add item.", variant: "destructive" })
+    }
+  }
+
+  const handleRemoveItem = async (catIndex: number, itemIndex: number) => {
+    const newMenu = [...menu]
+    const itemId = newMenu[catIndex].items[itemIndex].id
+    if (!itemId) {
+      toast({ title: "Error", description: "Item not found in database.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('menu_items')
+        .delete()
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      newMenu[catIndex].items.splice(itemIndex, 1)
+      // Re-index remaining items in this category
+      newMenu[catIndex].items.forEach((item, idx) => item.order_index = idx);
+      setMenu(newMenu)
+      toast({ title: "Item Removed", description: "Item removed from database." })
+    } catch (err) {
+      console.error("Error removing item:", err)
+      toast({ title: "Error", description: "Failed to remove item.", variant: "destructive" })
+    }
+  }
+
+  const handleAddCategory = async () => {
+    const newCategory = { category: "", items: [], order_index: menu.length }
+    try {
+      const { data, error } = await supabase
+        .from('menu_categories')
+        .insert({ name: newCategory.category, order_index: newCategory.order_index })
+        .select('id')
+        .single()
+
+      if (error) throw error
+
+      setMenu([...menu, { ...newCategory, id: data.id }])
+      toast({ title: "Category Added", description: "New category added to database." })
+    } catch (err) {
+      console.error("Error adding category:", err)
+      toast({ title: "Error", description: "Failed to add category.", variant: "destructive" })
+    }
+  }
+
+  const handleRemoveCategory = async (catIndex: number) => {
+    const newMenu = [...menu]
+    const categoryId = newMenu[catIndex].id
+    if (!categoryId) {
+      toast({ title: "Error", description: "Category not found in database.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      // Delete associated items first (if not cascaded in DB)
+      await supabase.from('menu_items').delete().eq('category_id', categoryId);
+
+      const { error } = await supabase
+        .from('menu_categories')
+        .delete()
+        .eq('id', categoryId)
+
+      if (error) throw error
+
+      newMenu.splice(catIndex, 1)
+      // Re-index remaining categories
+      newMenu.forEach((cat, idx) => cat.order_index = idx);
+      setMenu(newMenu)
+      toast({ title: "Category Removed", description: "Category removed from database." })
+    } catch (err) {
+      console.error("Error removing category:", err)
+      toast({ title: "Error", description: "Failed to remove category.", variant: "destructive" })
+    }
+  }
+
+  const handleMoveCategory = async (index: number, direction: 'up' | 'down') => {
+    const newMenu = [...menu];
+    if ((direction === 'up' && index > 0) || (direction === 'down' && index < newMenu.length - 1)) {
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      [newMenu[index], newMenu[targetIndex]] = [newMenu[targetIndex], newMenu[index]];
+
+      // Update order_index for the two moved categories
+      newMenu[index].order_index = index;
+      newMenu[targetIndex].order_index = targetIndex;
+
+      setMenu(newMenu);
+      // Save changes to database immediately after moving
+      await handleSave();
+    }
   };
 
-  const handleSave = () => {
-    localStorage.setItem("restaurant_menu", JSON.stringify(menu))
-    toast({
-      title: "Menu Saved!",
-      description: "Your menu changes have been saved to local storage.",
-    })
+  const handleSave = async () => {
+    try {
+      // Save categories
+      for (const [index, category] of menu.entries()) {
+        if (!category.id) {
+          // This case should ideally not happen if categories are added via handleAddCategory
+          console.warn("Category missing ID, skipping save:", category);
+          continue;
+        }
+        const { error: catError } = await supabase
+          .from('menu_categories')
+          .upsert({
+            id: category.id,
+            name: category.category,
+            order_index: index,
+          }, { onConflict: 'id' })
+
+        if (catError) throw catError
+
+        // Save items for each category
+        for (const [itemIndex, item] of category.items.entries()) {
+          if (!item.id) {
+            // This case should ideally not happen if items are added via handleAddItem
+            console.warn("Item missing ID, skipping save:", item);
+            continue;
+          }
+          const { error: itemError } = await supabase
+            .from('menu_items')
+            .upsert({
+              id: item.id,
+              category_id: category.id,
+              name: item.name,
+              price: item.price,
+              description: item.description,
+              image_url: item.imageUrl,
+              order_index: itemIndex,
+            }, { onConflict: 'id' })
+
+          if (itemError) throw itemError
+        }
+      }
+      toast({
+        title: "Menu Saved!",
+        description: "Your menu changes have been saved to the database.",
+      })
+    } catch (err) {
+      console.error("Error saving menu:", err)
+      toast({
+        title: "Error",
+        description: "Failed to save menu changes to database.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-4xl mx-auto p-4 md:p-6 text-center text-gray-600">
+        Loading editor...
+      </div>
+    )
   }
 
   return (
@@ -91,9 +272,9 @@ export function MenuEditor() {
       </Button>
 
       {menu.map((categoryData, catIndex) => (
-        <Card key={catIndex} className="mb-8">
+        <Card key={categoryData.id || catIndex} className="mb-8">
           <CardHeader className="flex flex-row items-center justify-between">
-            <div className="grid gap-1 flex-grow"> {/* Added flex-grow */}
+            <div className="grid gap-1 flex-grow">
               <CardTitle>
                 <Input
                   value={categoryData.category}
@@ -104,7 +285,7 @@ export function MenuEditor() {
               </CardTitle>
               <CardDescription>Edit items in this category.</CardDescription>
             </div>
-            <div className="flex items-center gap-2 ml-4"> {/* Added ml-4 for spacing */}
+            <div className="flex items-center gap-2 ml-4">
               <Button
                 variant="outline"
                 size="icon"
@@ -130,7 +311,7 @@ export function MenuEditor() {
           </CardHeader>
           <CardContent className="grid gap-4">
             {categoryData.items.map((item, itemIndex) => (
-              <div key={itemIndex} className="flex flex-col gap-4 border-b pb-4 last:border-b-0 last:pb-0">
+              <div key={item.id || itemIndex} className="flex flex-col gap-4 border-b pb-4 last:border-b-0 last:pb-0">
                 <div className="flex items-end gap-4">
                   <div className="grid gap-2 flex-1">
                     <Label htmlFor={`item-name-${catIndex}-${itemIndex}`}>Item Name</Label>
